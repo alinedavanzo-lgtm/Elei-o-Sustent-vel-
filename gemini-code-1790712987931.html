@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulador de Urna Eletrônica - Banco de Dados Online</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Biblioteca Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    .urna-screen-shadow { box-shadow: inset 0 0 15px rgba(0,0,0,0.15); }
+    .btn-key {
+      background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
+      box-shadow: 0 4px 0 #000, inset 0 1px 1px rgba(255,255,255,0.2);
+    }
+    .btn-key:active { transform: translateY(3px); box-shadow: 0 1px 0 #000; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 flex flex-col items-center justify-center font-sans">
+
+  <div class="max-w-4xl w-full bg-slate-800 rounded-2xl p-6 shadow-2xl border border-slate-700">
+    <!-- Cabeçalho -->
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-6 pb-4 border-b border-slate-700 gap-4">
+      <h1 class="text-2xl font-bold text-amber-400 flex items-center gap-2">
+        🗳️ Urna Eletrônica (Online & Salva)
+      </h1>
+      <div class="flex gap-2">
+        <button onclick="mostrarAba('urna')" id="tab-urna" class="px-4 py-2 bg-emerald-600 rounded-lg font-medium hover:bg-emerald-500 transition">Simulador</button>
+        <button onclick="mostrarAba('candidatos')" id="tab-candidatos" class="px-4 py-2 bg-slate-700 rounded-lg font-medium hover:bg-slate-600 transition">Candidatos</button>
+        <button onclick="mostrarAba('apuracao')" id="tab-apuracao" class="px-4 py-2 bg-slate-700 rounded-lg font-medium hover:bg-slate-600 transition">Apuração</button>
+      </div>
+    </div>
+
+    <!-- Conteúdo da Urna -->
+    <div id="view-urna" class="grid grid-cols-1 md:grid-cols-12 gap-6">
+      <!-- Tela da Urna -->
+      <div class="md:col-span-7 bg-[#d3dfd3] text-slate-900 p-6 rounded-xl border-4 border-slate-700 urna-screen-shadow flex flex-col justify-between min-h-[380px]">
+        <div id="screen-content">
+          <div class="text-xs uppercase tracking-widest text-slate-600 font-bold mb-1" id="cargo-title">DEPUTADO (4 DÍGITOS)</div>
+          <div class="flex items-center gap-2 my-3" id="digits-container">
+            <!-- Dígitos serão gerados por JS -->
+          </div>
+          <div id="candidato-info" class="mt-4 text-sm space-y-1">
+            <!-- Informações do candidato -->
+          </div>
+        </div>
+
+        <div class="border-t border-slate-400 pt-2 text-xs text-slate-600 font-semibold">
+          Apertar:<br>
+          <span class="text-emerald-800 font-bold">CONFIRMA</span> para CONFIRMAR este voto<br>
+          <span class="text-amber-800 font-bold">CORRIGE</span> para REINICIAR este voto
+        </div>
+      </div>
+
+      <!-- Teclado Numérico -->
+      <div class="md:col-span-5 bg-slate-950 p-6 rounded-xl border border-slate-800 flex flex-col justify-between">
+        <div class="grid grid-cols-3 gap-3">
+          <button onclick="digitar('1')" class="btn-key text-white text-xl font-bold py-3 rounded-lg">1</button>
+          <button onclick="digitar('2')" class="btn-key text-white text-xl font-bold py-3 rounded-lg">2</button>
+          <button onclick="digitar('3')" class="btn-key text-white text-xl font-bold py-3 rounded-lg">3</button>
+          <button onclick="digitar('4')" class="btn-key text-white text-xl font-bold py-3 rounded-lg">4</button>
+          <button onclick="digitar('5')" class="btn-key text-white text-xl font-bold py-3 rounded-lg">5</button>
+          <button onclick="digitar('6')" class="btn-key text-white text-xl font-bold py-3 rounded-lg">6</button>
+          <button onclick="digitar('7')" class="btn-key text-white text-xl font-bold py-3 rounded-lg">7</button>
+          <button onclick="digitar('8')" class="btn-key text-white text-xl font-bold py-3 rounded-lg">8</button>
+          <button onclick="digitar('9')" class="btn-key text-white text-xl font-bold py-3 rounded-lg">9</button>
+          <button onclick="digitar('0')" class="btn-key text-white text-xl font-bold py-3 rounded-lg col-start-2">0</button>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 mt-6">
+          <button onclick="votarBranco()" class="bg-white text-slate-900 font-bold py-3 rounded-lg text-xs hover:bg-slate-200">BRANCO</button>
+          <button onclick="corrige()" class="bg-amber-600 text-white font-bold py-3 rounded-lg text-xs hover:bg-amber-500">CORRIGE</button>
+          <button onclick="confirma()" class="bg-emerald-600 text-white font-bold py-3 rounded-lg text-xs hover:bg-emerald-500">CONFIRMA</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gerenciar Candidatos -->
+    <div id="view-candidatos" class="hidden space-y-6">
+      <form id="form-candidato" onsubmit="salvarCandidato(event)" class="bg-slate-700/50 p-4 rounded-xl space-y-4">
+        <h3 class="font-bold text-amber-400">Cadastrar Novo Candidato</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+          <select id="cand-cargo" class="bg-slate-800 p-2 rounded border border-slate-600 text-sm">
+            <option value="deputado">Deputado (4 dígitos)</option>
+            <option value="governador">Governador (3 dígitos)</option>
+            <option value="presidente">Presidente (2 dígitos)</option>
+          </select>
+          <input type="text" id="cand-numero" placeholder="Número" class="bg-slate-800 p-2 rounded border border-slate-600 text-sm" required>
+          <input type="text" id="cand-nome" placeholder="Nome do Candidato" class="bg-slate-800 p-2 rounded border border-slate-600 text-sm" required>
+          <input type="text" id="cand-partido" placeholder="Partido" class="bg-slate-800 p-2 rounded border border-slate-600 text-sm" required>
+        </div>
+        <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded text-sm">Salvar no Banco de Dados</button>
+      </form>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm text-slate-300">
+          <thead class="bg-slate-700 text-slate-100">
+            <tr>
+              <th class="p-3">Cargo</th>
+              <th class="p-3">Número</th>
+              <th class="p-3">Nome</th>
+              <th class="p-3">Partido</th>
+              <th class="p-3">Ação</th>
+            </tr>
+          </thead>
+          <tbody id="lista-candidatos">
+            <!-- Carregado via JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Apuração -->
+    <div id="view-apuracao" class="hidden space-y-4">
+      <div class="flex justify-between items-center">
+        <h3 class="font-bold text-amber-400 text-lg">Resultado Parcial da Eleição</h3>
+        <button onclick="carregarApuracao()" class="bg-slate-700 hover:bg-slate-600 text-xs px-3 py-2 rounded">Atualizar Votos</button>
+      </div>
+      <div id="resultado-votos" class="space-y-4">
+        <!-- Carregado via JS -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ⚠️ SUBSTITUA COM OS DADOS DO SEU PROJETO SUPABASE
+    const SUPABASE_URL = "https://SEU_PROJETO.supabase.co";
+    const SUPABASE_KEY = "SUA_CHAVE_ANON_PUBLIC_AQUI";
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const ETAPAS = [
+      { cargo: 'deputado', nome: 'DEPUTADO', digitos: 4 },
+      { cargo: 'governador', nome: 'GOVERNADOR', digitos: 3 },
+      { cargo: 'presidente', nome: 'PRESIDENTE', digitos: 2 }
+    ];
+
+    let etapaAtual = 0;
+    let numeroDigitado = "";
+    let listaCandidatosDB = [];
+
+    async function init() {
+      await carregarCandidatos();
+      renderTelaUrna();
+    }
+
+    async function carregarCandidatos() {
+      const { data, error } = await db.from('candidatos').select('*');
+      if (!error) listaCandidatosDB = data || [];
+      renderTabelaCandidatos();
+    }
+
+    function renderTelaUrna() {
+      const config = ETAPAS[etapaAtual];
+      document.getElementById('cargo-title').innerText = `${config.nome} (${config.digitos} DÍGITOS)`;
+      
+      const digitsContainer = document.getElementById('digits-container');
+      digitsContainer.innerHTML = '';
+      for (let i = 0; i < config.digitos; i++) {
+        const char = numeroDigitado[i] || '';
+        digitsContainer.innerHTML += `<div class="w-10 h-12 border-2 border-slate-700 bg-white flex items-center justify-center font-bold text-xl">${char}</div>`;
+      }
+
+      const infoContainer = document.getElementById('candidato-info');
+      const cand = listaCandidatosDB.find(c => c.cargo === config.cargo && c.numero === numeroDigitado);
+
+      if (cand) {
+        infoContainer.innerHTML = `<p><b>Nome:</b> ${cand.nome}</p><p><b>Partido:</b> ${cand.partido}</p>`;
+      } else if (numeroDigitado.length === config.digitos) {
+        infoContainer.innerHTML = `<p class="text-red-600 font-bold">VOTO NULO</p>`;
+      } else {
+        infoContainer.innerHTML = `<p class="text-slate-500">Digite o número do candidato...</p>`;
+      }
+    }
+
+    function digitar(n) {
+      const config = ETAPAS[etapaAtual];
+      if (numeroDigitado.length < config.digitos) {
+        numeroDigitado += n;
+        renderTelaUrna();
+      }
+    }
+
+    function corrige() {
+      numeroDigitado = "";
+      renderTelaUrna();
+    }
+
+    async function confirma() {
+      const config = ETAPAS[etapaAtual];
+      if (numeroDigitado.length === config.digitos) {
+        const cand = listaCandidatosDB.find(c => c.cargo === config.cargo && c.numero === numeroDigitado);
+        const votoFinal = cand ? cand.numero : 'NULO';
+
+        // Salva voto no Supabase
+        await db.from('votos').insert([{ cargo: config.cargo, voto: votoFinal }]);
+
+        etapaAtual++;
+        numeroDigitado = "";
+
+        if (etapaAtual < ETAPAS.length) {
+          renderTelaUrna();
+        } else {
+          document.getElementById('screen-content').innerHTML = `<div class="text-4xl font-bold text-center my-12 text-emerald-800">FIM</div>`;
+          setTimeout(() => {
+            etapaAtual = 0;
+            renderTelaUrna();
+          }, 3000);
+        }
+      }
+    }
+
+    async function votarBranco() {
+      const config = ETAPAS[etapaAtual];
+      await db.from('votos').insert([{ cargo: config.cargo, voto: 'BRANCO' }]);
+      etapaAtual++;
+      numeroDigitado = "";
+      if (etapaAtual < ETAPAS.length) {
+        renderTelaUrna();
+      } else {
+        document.getElementById('screen-content').innerHTML = `<div class="text-4xl font-bold text-center my-12 text-emerald-800">FIM</div>`;
+        setTimeout(() => { etapaAtual = 0; renderTelaUrna(); }, 3000);
+      }
+    }
+
+    async function salvarCandidato(e) {
+      e.preventDefault();
+      const cargo = document.getElementById('cand-cargo').value;
+      const numero = document.getElementById('cand-numero').value;
+      const nome = document.getElementById('cand-nome').value;
+      const partido = document.getElementById('cand-partido').value;
+
+      await db.from('candidatos').insert([{ cargo, numero, nome, partido }]);
+      document.getElementById('form-candidato').reset();
+      await carregarCandidatos();
+    }
+
+    async function deletarCandidato(id) {
+      await db.from('candidatos').delete().eq('id', id);
+      await carregarCandidatos();
+    }
+
+    function renderTabelaCandidatos() {
+      const tbody = document.getElementById('lista-candidatos');
+      tbody.innerHTML = listaCandidatosDB.map(c => `
+        <tr class="border-b border-slate-700">
+          <td class="p-3 capitalize">${c.cargo}</td>
+          <td class="p-3 font-bold">${c.numero}</td>
+          <td class="p-3">${c.nome}</td>
+          <td class="p-3">${c.partido}</td>
+          <td class="p-3"><button onclick="deletarCandidato('${c.id}')" class="text-red-400 hover:text-red-300">Excluir</button></td>
+        </tr>
+      `).join('');
+    }
+
+    async function carregarApuracao() {
+      const { data: votos } = await db.from('votos').select('*');
+      const container = document.getElementById('resultado-votos');
+      container.innerHTML = '';
+
+      ETAPAS.forEach(etapa => {
+        const votosCargo = votos.filter(v => v.cargo === etapa.cargo);
+        const contagem = {};
+
+        votosCargo.forEach(v => { contagem[v.voto] = (contagem[v.voto] || 0) + 1; });
+
+        let html = `<div class="bg-slate-800 p-4 rounded-lg"><h4 class="font-bold text-emerald-400 mb-2">${etapa.nome} (${votosCargo.length} votos)</h4><ul class="space-y-1 text-sm">`;
+        for (const [voto, qtd] of Object.entries(contagem)) {
+          html += `<li class="flex justify-between border-b border-slate-700 py-1"><span>Opção/Número: <b>${voto}</b></span><span>${qtd} voto(s)</span></li>`;
+        }
+        html += `</ul></div>`;
+        container.innerHTML += html;
+      });
+    }
+
+    function mostrarAba(aba) {
+      document.getElementById('view-urna').classList.add('hidden');
+      document.getElementById('view-candidatos').classList.add('hidden');
+      document.getElementById('view-apuracao').classList.add('hidden');
+
+      document.getElementById(`view-${aba}`).classList.remove('hidden');
+      if (aba === 'apuracao') carregarApuracao();
+    }
+
+    init();
+  </script>
+</body>
+</html>
